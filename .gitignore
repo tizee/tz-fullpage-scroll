@@ -1,0 +1,18 @@
+# OSX
+.DS_Store
+
+# package
+node_modules
+yarn.lock
+
+# output
+lib
+build
+dist
+.cache
+
+# test
+coverage
+
+# history
+.history
