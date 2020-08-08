@@ -1,5 +1,9 @@
 enum Easings {
   linear = 'linear',
+  ease = 'ease',
+  easeIn = 'easeIn',
+  easeOut = 'easeOut',
+  easeInOut = 'easeInOut',
   easeInQuad = 'easeInQuad',
   easeOutQuad = 'easeOutQuad',
   easeInOutQuad = 'easeInOutQuad',
@@ -10,30 +14,45 @@ enum Easings {
 
 interface Config {
   // easing function
-  easing?: Easings;
+  // to-do: use js animation
+  easing: Easings;
   // millisecond
-  duration?: number;
-  // to-do: use css3 animation
-  id?: string;
+  duration: number;
+  // slide classname
+  slideClass: string;
+  // whether loop when reching boundaries
+  loop: boolean;
 }
+
+// see https://developer.mozilla.org/en-US/docs/Web/CSS/transition-timing-function
+const mapToCSS3: Record<string, string> = {
+  linear: 'cubic-bezier(0.0, 0.0, 1.0, 1.0)',
+  ease: 'cubic-bezier(0.25, 0.1, 0.25, 1.0)',
+  easeIn: 'cubic-bezier(0.42, 0, 1.0, 1.0)',
+  easeOut: 'cubic-bezier(0, 0, 0.58, 1.0)',
+  easeInOut: 'cubic-bezier(0.42, 0, 0.58, 1.0)',
+};
 
 class PageScroll {
   static defaultConfig: Config = {
     easing: Easings.easeInOutQuad,
     duration: 600,
-    id: 'slide',
+    slideClass: 'slide',
+    loop: true,
   };
   private config: Config;
   private container: HTMLElement;
   private curIdx: number;
   private total: number;
   private lastTime: unknown;
+  private isAnimating: boolean;
 
   constructor(container: HTMLElement, config?: Config) {
     this.config = Object.assign(PageScroll.defaultConfig, {}, config);
     this.container = container;
     this.curIdx = 0;
     this.total = 0;
+    this.isAnimating = false;
     document.documentElement.style.overflow = 'hidden';
     this.handleResize = this.handleResize.bind(this);
     this.handleScroll = this.handleScroll.bind(this);
@@ -43,11 +62,21 @@ class PageScroll {
   init(): void {
     const { height } = document.documentElement.getBoundingClientRect();
     let slides = this.container.querySelectorAll<HTMLElement>(
-      '.' + this.config.id
+      '.' + this.config.slideClass
     );
+    // use css3 animation
+    this.container.style.transition = `all ${mapToCSS3[this.config.easing]} ${
+      this.config.duration
+    }ms`;
+    // you can scroll once transition end
+    this.container.ontransitionend = () => {
+      this.isAnimating = false;
+    };
     // load from url
     let idx = Number.parseInt(
-      window.location.hash.replace(`#${this.config.id}`, '').split('/')[0]
+      window.location.hash
+        .replace(`#${this.config.slideClass}`, '')
+        .split('/')[0]
     );
     if (!Number.isNaN(idx)) {
       this.curIdx = idx;
@@ -101,10 +130,10 @@ class PageScroll {
 
   // responsive
   handleResize() {
-    if (this.config.id) {
+    if (this.config.slideClass) {
       const { height } = document.documentElement.getBoundingClientRect();
       let slides = this.container.querySelectorAll<HTMLElement>(
-        '.' + this.config.id
+        '.' + this.config.slideClass
       );
       this.setSlidesHeight(slides, height);
       this.moveToSlide(this.curIdx);
@@ -114,16 +143,22 @@ class PageScroll {
   }
 
   updateHash() {
-    window.location.hash = (this.config.id || 'slide') + this.curIdx;
+    window.location.hash = (this.config.slideClass || 'slide') + this.curIdx;
   }
 
   // defer animation to scroll
   scroll(dir: boolean) {
     if (dir) {
       // scroll down
+      if (this.curIdx + 1 === this.total && !this.config.loop) {
+        return;
+      }
       this.curIdx = (this.curIdx + 1) % this.total;
     } else {
       // scroll up
+      if (this.curIdx - 1 < 0 && !this.config.loop) {
+        return;
+      }
       this.curIdx = (this.curIdx - 1 + this.total) % this.total;
     }
     this.moveToSlide(this.curIdx);
@@ -132,24 +167,28 @@ class PageScroll {
 
   // move down on slide
   scrollDown(): void {
-    this.scroll(true);
+    if (!this.isAnimating) {
+      this.scroll(true);
+    }
   }
 
   // move up one slide
   scrollUp(): void {
-    this.scroll(false);
+    if (!this.isAnimating) {
+      this.scroll(false);
+    }
   }
 
   // move to index-th slide
   moveToSlide(index: number): void {
     let slides = this.container.querySelectorAll<HTMLElement>(
-      '.' + this.config.id
+      '.' + this.config.slideClass
     );
     // scroll down
+    this.isAnimating = true;
     this.container.style.transform = `translate3d(0,-${
       index * document.documentElement.clientHeight
     }px,0)`;
-    this.container.style.transition = `all ease 600ms`;
     slides.forEach(el => el.classList.remove('active'));
     slides[index].classList.toggle('active');
   }
