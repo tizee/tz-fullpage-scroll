@@ -1,15 +1,10 @@
+import { linear, easeInQuad, easeOutQuad, easeInOutQuad } from './easings';
 enum Easings {
   linear = 'linear',
   ease = 'ease',
   easeIn = 'easeIn',
   easeOut = 'easeOut',
   easeInOut = 'easeInOut',
-  easeInQuad = 'easeInQuad',
-  easeOutQuad = 'easeOutQuad',
-  easeInOutQuad = 'easeInOutQuad',
-  easeInCubic = 'easeInCubic',
-  easeOutCubic = 'easeOutCubic',
-  easeInOutCubic = 'easeInOutCubic',
 }
 
 interface Config {
@@ -22,8 +17,16 @@ interface Config {
   slideClass: string;
   // whether loop when reching boundaries
   loop: boolean;
+  // use rAF for animation
+  useJS: boolean;
 }
 
+const mapToFunction: Record<string, Function> = {
+  linear: linear,
+  ease: easeInOutQuad,
+  easeIn: easeInQuad,
+  easeInOutQuad: easeInOutQuad,
+};
 // see https://developer.mozilla.org/en-US/docs/Web/CSS/transition-timing-function
 const mapToCSS3: Record<string, string> = {
   linear: 'cubic-bezier(0.0, 0.0, 1.0, 1.0)',
@@ -33,23 +36,112 @@ const mapToCSS3: Record<string, string> = {
   easeInOut: 'cubic-bezier(0.42, 0, 0.58, 1.0)',
 };
 
+interface ScrollMethod {
+  (
+    container: HTMLElement,
+    slideClass: string,
+    type: Easings,
+    duration: number,
+    index: number,
+    callback: Function,
+    dir?: boolean
+  ): void;
+}
+
+const DefaultScroll: ScrollMethod = () => {
+  // noop
+};
+
+const lerp = (a: number, b: number, progress: number) => {
+  return a + (b - a) * progress;
+};
+
+const CSSScroll: ScrollMethod = (
+  container: HTMLElement,
+  slideClass: string,
+  type: Easings,
+  duration: number,
+  index: number,
+  callback: Function,
+  dir?: boolean
+) => {
+  // scroll down
+  // only run once
+  container.style.transition = `all ${mapToCSS3[type]} ${duration}ms`;
+  requestAnimationFrame(() => {
+    console.log(index);
+    let slides = container.querySelectorAll<HTMLElement>('.' + slideClass);
+    container.ontransitionend = () => {
+      if (callback) {
+        console.log('callback');
+        callback();
+      }
+    };
+    container.style.transform = `translate3d(0,-${
+      index * document.documentElement.clientHeight
+    }px,0)`;
+    slides.forEach(el => el.classList.remove('active'));
+    slides[index].classList.toggle('active');
+  });
+};
+
+const JSScroll: ScrollMethod = (
+  container: HTMLElement,
+  slideClass: string,
+  type: Easings,
+  duration: number,
+  index: number,
+  callback: Function,
+  dir?: boolean
+) => {
+  let slides = container.querySelectorAll<HTMLElement>('.' + slideClass);
+  let start = new Date().getTime();
+  slides.forEach(el => el.classList.remove('active'));
+  slides[index].classList.toggle('active');
+  function scroll() {
+    let cur = new Date().getTime();
+    let offset = cur - start;
+    let progress = mapToFunction[type](offset / duration);
+    const height = document.documentElement.clientHeight;
+    if (dir) {
+      const newHeight = lerp((index - 1) * height, index * height, progress);
+      container.style.transform = `translate3d(0,-${newHeight}px,0)`;
+    } else {
+      const newHeight = lerp((index + 1) * height, index * height, progress);
+      container.style.transform = `translate3d(0,-${newHeight}px,0)`;
+    }
+    if (offset >= duration) {
+      // end
+      if (callback) {
+        console.log('callback');
+        callback();
+      }
+      return;
+    }
+    requestAnimationFrame(scroll);
+  }
+  scroll();
+};
+
 class PageScroll {
   static defaultConfig: Config = {
-    easing: Easings.easeInOutQuad,
+    easing: Easings.ease,
     duration: 600,
     slideClass: 'slide',
     loop: true,
+    useJS: false,
   };
+  private scrollMethod: ScrollMethod;
   private config: Config;
   private container: HTMLElement;
   private curIdx: number;
   private total: number;
-  private lastTime: unknown;
-  private isAnimating: boolean;
+  public isAnimating: boolean;
 
   constructor(container: HTMLElement, config?: Config) {
     this.config = Object.assign(PageScroll.defaultConfig, {}, config);
     this.container = container;
+    this.scrollMethod = DefaultScroll;
     this.curIdx = 0;
     this.total = 0;
     this.isAnimating = false;
@@ -59,36 +151,60 @@ class PageScroll {
     this.init();
   }
 
+  setScrollMode(useJS: boolean): void {
+    this.config.useJS = useJS;
+    if (this.config.useJS) {
+      // reset
+      this.container.style.transition = ``;
+      // you can scroll once transition end
+      this.scrollMethod = JSScroll;
+    } else {
+      // use css3 animation
+      // we could also use animate() to create an Animation Object
+      this.scrollMethod = CSSScroll;
+      // you can scroll once transition end
+    }
+  }
+
   init(): void {
     const { height } = document.documentElement.getBoundingClientRect();
     let slides = this.container.querySelectorAll<HTMLElement>(
       '.' + this.config.slideClass
     );
-    // use css3 animation
-    this.container.style.transition = `all ${mapToCSS3[this.config.easing]} ${
-      this.config.duration
-    }ms`;
-    // you can scroll once transition end
     this.container.ontransitionend = () => {
       this.isAnimating = false;
     };
+    this.total = slides.length;
+    this.setSlidesHeight(slides, height);
+    this.setScrollMode(this.config.useJS);
+    this.container.style.position = 'relative';
+    this.container.style.height = '100%';
+    slides.forEach(el => {
+      el.style.position = 'relative';
+    });
     // load from url
     let idx = Number.parseInt(
       window.location.hash
         .replace(`#${this.config.slideClass}`, '')
         .split('/')[0]
     );
+    console.log(this.curIdx, idx);
     if (!Number.isNaN(idx)) {
       this.curIdx = idx;
-      this.moveToSlide(this.curIdx);
+      const callback = () => {
+        this.isAnimating = false;
+      };
+      callback.bind(this);
+      this.isAnimating = true;
+      this.scrollMethod(
+        this.container,
+        this.config.slideClass,
+        this.config.easing,
+        this.config.duration,
+        this.curIdx,
+        callback
+      );
     }
-    this.total = slides.length;
-    this.setSlidesHeight(slides, height);
-    this.container.style.position = 'relative';
-    this.container.style.height = '100%';
-    slides.forEach(el => {
-      el.style.position = 'relative';
-    });
     this.addListeners();
   }
 
@@ -109,6 +225,20 @@ class PageScroll {
       this.scrollDown();
     } else {
       this.scrollUp();
+    }
+  }
+
+  // move down on slide
+  scrollDown(): void {
+    if (!this.isAnimating) {
+      this.scroll(true);
+    }
+  }
+
+  // move up one slide
+  scrollUp(): void {
+    if (!this.isAnimating) {
+      this.scroll(false);
     }
   }
 
@@ -136,14 +266,21 @@ class PageScroll {
         '.' + this.config.slideClass
       );
       this.setSlidesHeight(slides, height);
-      this.moveToSlide(this.curIdx);
+      const callback = () => {
+        this.isAnimating = false;
+      };
+      this.isAnimating = true;
+      this.scrollMethod(
+        this.container,
+        this.config.slideClass,
+        this.config.easing,
+        this.config.duration,
+        this.curIdx,
+        callback.bind(this)
+      );
     } else {
       throw new Error(`PageScroll need id for slides`);
     }
-  }
-
-  updateHash() {
-    window.location.hash = (this.config.slideClass || 'slide') + this.curIdx;
   }
 
   // defer animation to scroll
@@ -161,36 +298,24 @@ class PageScroll {
       }
       this.curIdx = (this.curIdx - 1 + this.total) % this.total;
     }
-    this.moveToSlide(this.curIdx);
+    const callback = () => {
+      this.isAnimating = false;
+    };
+    this.isAnimating = true;
+    this.scrollMethod(
+      this.container,
+      this.config.slideClass,
+      this.config.easing,
+      this.config.duration,
+      this.curIdx,
+      callback.bind(this),
+      dir
+    );
     this.updateHash();
   }
 
-  // move down on slide
-  scrollDown(): void {
-    if (!this.isAnimating) {
-      this.scroll(true);
-    }
-  }
-
-  // move up one slide
-  scrollUp(): void {
-    if (!this.isAnimating) {
-      this.scroll(false);
-    }
-  }
-
-  // move to index-th slide
-  moveToSlide(index: number): void {
-    let slides = this.container.querySelectorAll<HTMLElement>(
-      '.' + this.config.slideClass
-    );
-    // scroll down
-    this.isAnimating = true;
-    this.container.style.transform = `translate3d(0,-${
-      index * document.documentElement.clientHeight
-    }px,0)`;
-    slides.forEach(el => el.classList.remove('active'));
-    slides[index].classList.toggle('active');
+  updateHash() {
+    window.location.hash = (this.config.slideClass || 'slide') + this.curIdx;
   }
 }
 

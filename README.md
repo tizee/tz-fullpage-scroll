@@ -15,8 +15,11 @@ import PageScroll from 'tz-fullpage-scroll';
 
 let container = document.querySelector('.slides');
 let ps = new PageScroll(container, {
-  easing: 'linear', // easing name | function | transition-timing-function
+  // linear, ease, easeIn, easeOut, easeInOut
+  easing: 'linear',
   duration: 600, // time to scroll a slide
-  id: 'slide', // common id for slides
+  id: 'slide', // common class name for slides
+  useJS: false, // use rAF
+  loop: false, // wheteher loop back to start/end when reaching end/start
 });
 ```
