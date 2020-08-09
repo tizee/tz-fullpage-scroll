@@ -30,6 +30,6 @@
         "pretty": true
     },
     "compileOnSave": false,
-    "include": ["src/**/*"],
+    "include": ["src/**/*", "fullpage.js"],
     "exclude": ["node_modules"]
 }

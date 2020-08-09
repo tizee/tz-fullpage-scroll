@@ -19,6 +19,7 @@ interface Config {
   loop: boolean;
   // use rAF for animation
   useJS: boolean;
+  callback?: Function;
 }
 
 const mapToFunction: Record<string, Function> = {
@@ -114,7 +115,7 @@ const JSScroll: ScrollMethod = (
       // end
       if (callback) {
         console.log('callback');
-        callback();
+        callback(index);
       }
       return;
     }
@@ -191,8 +192,11 @@ class PageScroll {
     console.log(this.curIdx, idx);
     if (!Number.isNaN(idx)) {
       this.curIdx = idx;
-      const callback = () => {
+      const callback = (index: number) => {
         this.isAnimating = false;
+        if (this.config.callback) {
+          this.config.callback(index);
+        }
       };
       callback.bind(this);
       this.isAnimating = true;
@@ -266,8 +270,11 @@ class PageScroll {
         '.' + this.config.slideClass
       );
       this.setSlidesHeight(slides, height);
-      const callback = () => {
+      const callback = (index: number) => {
         this.isAnimating = false;
+        if (this.config.callback) {
+          this.config.callback(index);
+        }
       };
       this.isAnimating = true;
       this.scrollMethod(
@@ -298,8 +305,11 @@ class PageScroll {
       }
       this.curIdx = (this.curIdx - 1 + this.total) % this.total;
     }
-    const callback = () => {
+    const callback = (index: number) => {
       this.isAnimating = false;
+      if (this.config.callback) {
+        this.config.callback(index);
+      }
     };
     this.isAnimating = true;
     this.scrollMethod(

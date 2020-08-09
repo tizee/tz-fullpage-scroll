@@ -24,6 +24,28 @@
         align-items: center;
         font-size: 200%;
       }
+      #pagination {
+        position: fixed;
+        left: 40px;
+        top: 0;
+        bottom: 0;
+        width: 6px;
+        height: 100px;
+        margin: auto;
+      }
+      #pagination span {
+        display: block;
+        height: 8px;
+        background: lightcoral;
+        opacity: 0.15;
+        margin-bottom: 10px;
+        transition: height 600ms;
+        border-radius: 8px;
+      }
+      #pagination span.active {
+        opacity: 1;
+        height: 30px;
+      }
     </style>
   </head>
   <body>
@@ -41,19 +63,36 @@
         <p>Slide 3</p>
       </div>
     </div>
+    <div id="pagination">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
     <noscript>
       Please Enable JavaScript to use.
     </noscript>
     <script src="../dist/bundle.iife.js"></script>
     <script>
       var container = document.querySelector('.wrapper');
+      var page = document.querySelector('#pagination');
       console.log('pageScroll');
       var ps = new PageScroll(container, {
         easing: 'easeIn',
         duration: 600,
-        id: 'slide',
+        slideClass: 'slide',
         loop: false,
         useJS: true,
+        callback: index => {
+          console.log('run callback');
+          var point = page.children[index];
+          for (var i = 0; i < page.children.length; i++) {
+            if (i !== index) {
+              page.children[i].classList.remove('active');
+            } else {
+              point.classList.add('active');
+            }
+          }
+        },
       });
     </script>
   </body>
